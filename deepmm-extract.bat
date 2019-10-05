@@ -1,0 +1,1 @@
+gdb-python27 -x deepmm-extract.py
