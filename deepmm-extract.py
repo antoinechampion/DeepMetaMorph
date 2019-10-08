@@ -21,10 +21,10 @@ verbose_mode = True
 save_extracted_to_folder_path = "extracted"
 programs_to_extract_list_path = "food-for-extractor.txt"
 check_for_reccuring_patterns = True
-max_reccuring_patterns = 5
+max_reccuring_patterns = 10
 max_pattern_length = 10
 # Software breakpoints are very slow, optimal = 100?
-max_breakpoints = 100
+max_breakpoints = 10000
 
 attach_to_process = False
 process_id = "4316"
@@ -243,6 +243,7 @@ def parse_instruction(re_dict, inst_str):
 		return inst			
 	else:
 		print("Can't parse instruction regex")
+	return None
 
 def parse_registers_state(re_dict):
 	regs_str = gdbh_regs()
@@ -271,9 +272,9 @@ def set_breakpoints():
 	func_list = [k.split('  ') for k in func_list_str.split('\n')]
 	func_list = func_list[6:-1] # 3 first lines are descriptive, last is empty
 	addr_list = [fun[0] for fun in func_list]
-	
 	if (len(addr_list) > max_breakpoints):
 		print("\nToo many breakpoints (" + str(len(addr_list)) + ")! Downsampling...", end="")
+	
 	step = int(len(addr_list)/max_breakpoints) + 1
 	bp_count = 0
 	for address in addr_list[::step]:
@@ -319,7 +320,11 @@ def main():
 	loadsave_handler = LoadSaveHandler()
 	next_program(loadsave_handler, re_dict)
 	
-	i = 0
+    # all instructions count
+	useful_since_last_skip = 0
+	useful_total = 0
+	useless_since_last_skip = 0
+	useless_total = 0
 	try:
 		sequence_changed = True
 		while True:			
@@ -333,12 +338,23 @@ def main():
 				regs_after = parse_registers_state(re_dict)
 				loadsave_handler.save_state(inst, regs_before, regs_after, stack_before, stack_after, sequence_changed)
 				sequence_changed = False
-				i = i + 1
-				if i % 1000 == 0:
-					print("==> Parsed " + str(i) + " useful instructions")
+				useful_since_last_skip = useful_since_last_skip + 1
+				useful_total = useful_total + 1
 			else:
 				sequence_changed = True
-	except:
+				useless_since_last_skip = useless_since_last_skip + 1
+				useless_total = useless_total + 1
+				if useless_total % 1000 == 0:
+					print("==> Parsed: " + str(useless_total) + " instructions for " 
+					+ str(useful_total) + " useful instructions")
+			if useless_since_last_skip > 10000 and useless_since_last_skip > 10*useful_since_last_skip:
+				print("\nToo many useless instruction. Skipping...")
+				useless_since_last_skip = 0
+				useful_since_last_skip = 0
+				gdbh_continue()
+				
+	except Exception, e:
+		print("Exception: " + e)
 		print("No more programs to parse.")
 		raw_input("Press Enter to exit...")
 		quit()
