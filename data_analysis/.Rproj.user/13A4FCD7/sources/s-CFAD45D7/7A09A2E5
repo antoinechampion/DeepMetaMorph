@@ -1,0 +1,33 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1570704812207.000,
+    "dirty" : false,
+    "encoding" : "",
+    "folds" : "",
+    "hash" : "0",
+    "id" : "7A09A2E5",
+    "lastKnownWriteTime" : 7160569971446915616,
+    "last_content_update" : 1570704812207,
+    "path" : null,
+    "project_path" : null,
+    "properties" : {
+        "cacheKey" : "2809F30F",
+        "caption" : "Y_padded",
+        "contentUrl" : "grid_resource/gridviewer.html?env=&obj=Y_padded&cache_key=2809F30F",
+        "displayedObservations" : 38020,
+        "environment" : "",
+        "expression" : "Y_padded",
+        "object" : "Y_padded",
+        "preview" : 0,
+        "totalObservations" : 38020,
+        "variables" : 3
+    },
+    "read_only" : false,
+    "read_only_alternatives" : [
+    ],
+    "relative_order" : 6,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_dataframe"
+}
