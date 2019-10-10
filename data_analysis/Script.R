@@ -8,6 +8,7 @@ library(jsonlite)
 library(binaryLogic)
 library(stringr)
 library(tidyr)
+library(onehot)
 
 data_path = "../extracted/"
 json <- NULL
@@ -239,30 +240,17 @@ data_analysis[["export"]] <- function(export_stack = TRUE) {
   }
   print("- Arrange")
   X_padded <- X_padded %>% arrange(Sequence, InstructionIndex)
-  print("- Unnest")
-  # Tidyr unnest is way too slow
-  # X_padded <- X_padded %>% unnest(StateDiff)
-  X_mat <- matrix(NA, nrow=m*l*n, ncol=3)
-  for (i in 1:(m*l)) {
-    from <- n*(i-1)+1
-    to <- n*i
-    X_mat[from:to, 1] <- rep(X_padded$Sequence[[i]], n)
-    X_mat[from:to, 2] <- rep(X_padded$InstructionIndex[[i]], n)
-    X_mat[from:to, 3] <- unlist(X_padded$StateDiff[[i]])
-  }
-  X_unnested <- data.frame(X_mat)
-  colnames(X_unnested) <- c("Sequence", "InstructionIndex", "StateDiff")
+  print("- Bind")
+  X_mat <- do.call(rbind, X_padded$StateDiff)
   
   print("Exporting input...")
-  write.csv(X_unnested, file=gzfile("input.csv.gz", compression = 1), row.names = FALSE)
+  write.csv(X_mat, file=gzfile("input.csv.gz", compression = 1), row.names = FALSE)
   
   print("Tidying output...")
   inst_and_args <- unique(paste(df$Instruction, df$Arguments))
   
   print("- Mutate")
   Y <- df %>% mutate(InstAndArgs = paste(Instruction, Arguments))
-  print("- Mutate")
-  Y <- Y %>% mutate(OneHotInstruction = match(InstAndArgs, inst_and_args))
   print("- Group By")
   Y <- Y %>% group_by(Sequence)
   print("- Mutate")
@@ -270,8 +258,8 @@ data_analysis[["export"]] <- function(export_stack = TRUE) {
   print("- Ungroup")
   Y <- Y %>% ungroup()
   print("- Select")
-  Y <- Y %>% select(Sequence, InstructionIndex, OneHotInstruction)
-  print("- Pad sequences")
+  Y <- Y %>% select(Sequence, InstructionIndex, InstAndArgs)
+  print("- Pad sequences & add <GO> & <END> tokens")
   Y_padded <- data.frame(Y)
   for (i in 1:m) {
     seq_l <- length(all_sequences[[i]])
@@ -281,17 +269,39 @@ data_analysis[["export"]] <- function(export_stack = TRUE) {
       names(pad) <- names(Y)
       pad[["Sequence"]] <- rep(i,to_pad)
       pad[["InstructionIndex"]] <- (seq_l+1):l
-      pad[["OneHotInstruction"]] <- rep(-1, to_pad)
+      pad[["InstAndArgs"]] <- rep("<END>", to_pad)
       Y_padded <- rbind(Y_padded, pad)
+      
+      # 0 index will be the <GO> token as InstructionIndex starts
+      # from 1
+      go <- data.frame(matrix(NA, nrow=1, ncol=3))
+      names(go) <- names(Y)
+      go[["Sequence"]] <- i
+      go[["InstructionIndex"]] <- 0
+      go[["InstAndArgs"]] <- "<GO>"
+      Y_padded <- rbind(Y_padded, go)
     }
   }
+  # Sequence are 1 step longer including the <GO> token
+  l <- l + 1
   print("- Arrange")
-  Y_padded <- Y_padded %>% arrange(Sequence, InstructionIndex)
+  Y_padded <- Y_padded %>% arrange(Sequence, InstructionIndex) %>% select(InstAndArgs)
+  print("Exporting categorical output...")
+  write.csv(Y_padded, file=gzfile("output.categorical.csv.gz", compression = 1), row.names = FALSE)
   
+  print("- One hot encode")
+  encoder <- onehot(Y_padded, stringsAsFactors = TRUE, max_levels = 5000)
+  Y_oh <- predict(encoder, Y_padded)
   print("Exporting output...")
-  write.csv(Y_padded, file=gzfile("output.csv.gz", compression = 1), row.names = FALSE)
+  write.csv(Y_oh, file=gzfile("output.csv.gz", compression = 1), row.names = FALSE)
   
-  print("All done.")
+  print("- Exporting dimensions...")
+  n_y <- ncol(Y_oh)
+  dims <- data.frame(m, l, l, n, n_y)
+  colnames(dims) <- c("m", "T_x", "T_y", "n_x", "n_y")
+  write.csv(dims, file=gzfile("dimensions.csv.gz", compression = 1), row.names = FALSE)
+  
+  print(">>>> All done. <<<<")
   print(strrep("-", 50))
 }
 
