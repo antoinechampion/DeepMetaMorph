@@ -12,6 +12,7 @@
     <Name>DeepMM</Name>
     <RootNamespace>DeepMM</RootNamespace>
     <InterpreterId>CondaEnv|CondaEnv|ml_env</InterpreterId>
+    <IsWindowsApplication>False</IsWindowsApplication>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
     <DebugSymbols>true</DebugSymbols>

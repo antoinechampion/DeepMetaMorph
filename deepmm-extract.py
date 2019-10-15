@@ -14,6 +14,7 @@ import atexit
 import time
 from os import listdir, system
 from collections import deque
+import psutil
 
 #-- Parameters
 parsed_registers = ["eax", "ebx", "ecx", "edx", "edi", "esi", "eflags"]
@@ -21,10 +22,10 @@ verbose_mode = True
 save_extracted_to_folder_path = "extracted"
 programs_to_extract_list_path = "food-for-extractor.txt"
 check_for_reccuring_patterns = True
-max_reccuring_patterns = 10
+max_reccuring_patterns = 100
 max_pattern_length = 10
-# Software breakpoints are very slow, optimal = 100?
-max_breakpoints = 10000
+# Software breakpoints are very slow, optimal = 1000?
+max_breakpoints = 100000
 
 attach_to_process = False
 process_id = "4316"
@@ -261,9 +262,18 @@ def init_gdb():
 	gdbh_exec("set disassembly-flavor intel")
 	gdbh_exec("set disassemble-next-line on")
 
-def set_breakpoints():
+# Kill a process named proc_name
+def pkill(proc_name):
+    for proc in psutil.process_iter():
+        if proc.name() == proc_name:
+            proc.kill()
+
+def set_breakpoints(loadsave_handler):
 	print("Setting breakpoints... ", end="")
+	print("The program will open for us to list its functions, close it after a few seconds...", end="")
+	gdbh_exec("run")
 	
+	print("Program closed, listing functions...")
 	if attach_to_process:
 		func_list_str = gdbh_sexec("info functions " + program_regex)
 	else:	
@@ -277,6 +287,7 @@ def set_breakpoints():
 	
 	step = int(len(addr_list)/max_breakpoints) + 1
 	bp_count = 0
+	gdbh_exec("start")
 	for address in addr_list[::step]:
 		try:
 			gdbh_sexec("tb *" + address)
@@ -307,7 +318,7 @@ def next_program(loadsave_handler, re_dict):
 	finally:
 		loadsave_handler.clear_locks()
 		
-	set_breakpoints()
+	set_breakpoints(loadsave_handler)
 	if attach_to_process:
 		gdbh_run()
 	else:
