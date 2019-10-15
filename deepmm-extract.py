@@ -25,7 +25,8 @@ check_for_reccuring_patterns = True
 max_reccuring_patterns = 100
 max_pattern_length = 10
 # Software breakpoints are very slow, optimal = 1000?
-max_breakpoints = 100000
+max_breakpoints = 2000
+use_debug_symbols = True
 
 attach_to_process = False
 process_id = "4316"
@@ -38,6 +39,8 @@ gdbh_exec = lambda s: gdb.execute(s)
 gdbh_sexec = lambda s: gdb.execute(s, to_string=True)
 # Launch program
 gdbh_run = lambda: gdbh_sexec("run")
+# Go to main and run
+gdbh_start = lambda: gdbh_sexec("start")
 # Continue execution
 gdbh_continue = lambda: gdbh_sexec("continue")
 # Load file into gdb
@@ -91,7 +94,7 @@ class LoadSaveHandler():
 			self.programs_to_extract_iterator = iter(f.read().splitlines())
 			
 	def clear_locks(self):
-		print("cleaning")
+		print("Cleaning program locks...")
 		for lock in self.lock_list:
 			os.remove(lock)
 	
@@ -211,6 +214,8 @@ def compile_regexes():
 	re_dict["pid"] = re.compile(r"^\[New\s+Thread\s+(\d+)", re.MULTILINE)
 	# entry point address
 	re_dict["init"] = re.compile(r"^\s+Entry\s+point:\s+(0x[0-9a-f]+)", re.MULTILINE)
+	# C++ function prototypes in symbols
+	re_dict["cpp_func"] = re.compile(r"(?:(?:static )?[a-zA-Z0-9_]+\*? \*?([a-zA-Z0-9_]+)\(.*)+", re.MULTILINE)
 	# inst address, func name, offset, hex instruction, asm func name, func arguments
 	re_dict["inst"] = re.compile(r"^=>\s+(0x[0-9a-f]+)(?:\s+<([^\+]+)\+(\d+)>){0,1}:\s+((?:[0-9a-f]{2}\s){1,})\s*(\w+)\s+(.*)", re.MULTILINE)
 	# register value
@@ -261,6 +266,7 @@ def init_gdb():
 	gdbh_exec("set confirm off")
 	gdbh_exec("set disassembly-flavor intel")
 	gdbh_exec("set disassemble-next-line on")
+	#gdbh_exec("set range-stepping off")
 
 # Kill a process named proc_name
 def pkill(proc_name):
@@ -268,26 +274,17 @@ def pkill(proc_name):
         if proc.name() == proc_name:
             proc.kill()
 
-def set_breakpoints(loadsave_handler):
-	print("Setting breakpoints... ", end="")
-	print("The program will open for us to list its functions, close it after a few seconds...", end="")
-	gdbh_exec("run")
-	
-	print("Program closed, listing functions...")
-	if attach_to_process:
-		func_list_str = gdbh_sexec("info functions " + program_regex)
-	else:	
-		func_list_str = gdbh_sexec("info functions")
-		
-	func_list = [k.split('  ') for k in func_list_str.split('\n')]
+def set_breakpoints_asm(info_functions):
+	print("Fetching functions from data sections...")
+	func_list = [k.split('  ') for k in info_functions.split('\n')]
 	func_list = func_list[6:-1] # 3 first lines are descriptive, last is empty
 	addr_list = [fun[0] for fun in func_list]
 	if (len(addr_list) > max_breakpoints):
-		print("\nToo many breakpoints (" + str(len(addr_list)) + ")! Downsampling...", end="")
+		print("Too many breakpoints (" + str(len(addr_list)) + ")! Downsampling...\n")
 	
 	step = int(len(addr_list)/max_breakpoints) + 1
 	bp_count = 0
-	gdbh_exec("start")
+	print("--> Placing breakpoints\n")
 	for address in addr_list[::step]:
 		try:
 			gdbh_sexec("tb *" + address)
@@ -297,15 +294,46 @@ def set_breakpoints(loadsave_handler):
 			print(e)
 			raw_input("Press Enter to exit...")
 			quit()
+	return bp_count
+
+def set_breakpoints_source(info_functions, re_dict):
+	print("Fetching functions from debug symbols...")
+	funcs = regex_all(re_dict["cpp_func"], info_functions)
+	
+	if (len(funcs) > max_breakpoints):
+		print("Too many breakpoints (" + str(len(funcs)) + ")! Downsampling...\n")
+	
+	step = int(len(funcs)/max_breakpoints) + 1
+	bp_count = 0
+	print("---> Placing breakpoints\n", end="")
+	for fun in funcs[::step]:
+		print(fun, "- ", end="")
+		try:
+			gdbh_sexec("tb " + fun)
+			bp_count = bp_count + 1
+		except TypeError as e:
+			print("Bad function: " + str(address))
+			print(e)
+			raw_input("Press Enter to exit...")
+			quit()
+
+def set_breakpoints(loadsave_handler, re_dict):	
+	if attach_to_process:
+		func_list_str = gdbh_sexec("info functions " + program_regex)
+	else:	
+		func_list_str = gdbh_sexec("info functions")
+		
+	if not use_debug_symbols:
+		bp_count = set_breakpoints_asm(func_list_str)
+	else:
+		bp_count = set_breakpoints_source(func_list_str, re_dict)
+	
 	print(str(bp_count) + " breakpoints set.")
 	
 # Find entry point, place a breakpoint to it and run
 def goto_main_module(re_dict):
 	print("Going to main module... ", end="")
-	ret = gdbh_sexec("info file")
-	addr = regex_first(re_dict["init"], ret)
-	# gdbh_sexec("tb *" + addr[0])
-	gdbh_run()
+	gdbh_start()
 	print("Done.\n--> Dumping nasm data")
 
 def next_program(loadsave_handler, re_dict):
@@ -317,12 +345,9 @@ def next_program(loadsave_handler, re_dict):
 		quit()
 	finally:
 		loadsave_handler.clear_locks()
-		
-	set_breakpoints(loadsave_handler)
-	if attach_to_process:
-		gdbh_run()
-	else:
-		goto_main_module(re_dict)
+	
+	set_breakpoints(loadsave_handler, re_dict)
+	gdbh_run()
 		
 def main():
 	re_dict = compile_regexes()
