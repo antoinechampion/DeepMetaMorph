@@ -1,8 +1,3 @@
-# TODO
-# find bottleneck & optimize
-# cProfile show that >99% of the run time occur in gdb.execute, thus 
-# the bottleneck is gdb itself
-
 from __future__ import print_function
 import numpy as np
 import re
@@ -25,8 +20,8 @@ check_for_reccuring_patterns = True
 max_reccuring_patterns = 10
 max_pattern_length = 30
 # Software breakpoints are very slow, optimal = 1000?
-max_breakpoints = 2000
-use_debug_symbols = False
+max_breakpoints = 100
+use_debug_symbols = True
 
 attach_to_process = False
 process_id = "4316"

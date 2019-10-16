@@ -1,1 +1,1 @@
-C:\Users\champion\Downloads\TaskCoachPortable\TaskCoachPortable.exe
+C:\MinGW\bin\gdb.exe
