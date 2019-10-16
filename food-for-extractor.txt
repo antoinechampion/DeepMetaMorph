@@ -1,2 +1,1 @@
-C:\Program Files (x86)\GIMP 2\bin\gimp-2.10.exe
-#./food_for_extractor/Audacity/audacity.exe
+C:\Users\champion\Downloads\TaskCoachPortable\TaskCoachPortable.exe

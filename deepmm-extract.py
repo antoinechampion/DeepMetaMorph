@@ -22,11 +22,11 @@ verbose_mode = True
 save_extracted_to_folder_path = "extracted"
 programs_to_extract_list_path = "food-for-extractor.txt"
 check_for_reccuring_patterns = True
-max_reccuring_patterns = 100
-max_pattern_length = 10
+max_reccuring_patterns = 10
+max_pattern_length = 30
 # Software breakpoints are very slow, optimal = 1000?
 max_breakpoints = 2000
-use_debug_symbols = True
+use_debug_symbols = False
 
 attach_to_process = False
 process_id = "4316"
@@ -96,7 +96,10 @@ class LoadSaveHandler():
 	def clear_locks(self):
 		print("Cleaning program locks...")
 		for lock in self.lock_list:
-			os.remove(lock)
+			try:
+				os.remove(lock)
+			except:
+				pass
 	
 	def is_program_locked(self, name, create_lock = True):
 		lock_path = "./." + name + ".lock"
@@ -284,7 +287,7 @@ def set_breakpoints_asm(info_functions):
 	
 	step = int(len(addr_list)/max_breakpoints) + 1
 	bp_count = 0
-	print("--> Placing breakpoints\n")
+	print("--> Placing breakpoints")
 	for address in addr_list[::step]:
 		try:
 			gdbh_sexec("tb *" + address)
@@ -316,6 +319,8 @@ def set_breakpoints_source(info_functions, re_dict):
 			print(e)
 			raw_input("Press Enter to exit...")
 			quit()
+	print("")
+	return bp_count
 
 def set_breakpoints(loadsave_handler, re_dict):	
 	if attach_to_process:
@@ -347,6 +352,7 @@ def next_program(loadsave_handler, re_dict):
 		loadsave_handler.clear_locks()
 	
 	set_breakpoints(loadsave_handler, re_dict)
+	print("--> Running program...")
 	gdbh_run()
 		
 def main():
@@ -390,7 +396,8 @@ def main():
 				gdbh_continue()
 				
 	except Exception, e:
-		print("Exception: " + e)
+		print("Exception: ")
+		print(e)
 		print("No more programs to parse.")
 		raw_input("Press Enter to exit...")
 		quit()
