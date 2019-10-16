@@ -20,7 +20,7 @@ check_for_reccuring_patterns = True
 max_reccuring_patterns = 10
 max_pattern_length = 30
 # Software breakpoints are very slow, optimal = 1000?
-max_breakpoints = 100
+max_breakpoints = 1000
 use_debug_symbols = True
 
 attach_to_process = False
@@ -364,9 +364,15 @@ def main():
 	useless_total = 0
 	try:
 		sequence_changed = True
-		while True:			
-			stack_before = parse_stack_state(re_dict)	
-			regs_before = parse_registers_state(re_dict)
+		while True:	
+			try:
+				stack_before = parse_stack_state(re_dict)	
+				regs_before = parse_registers_state(re_dict)
+			except:
+				print(e)
+				print("Skipping.")
+				gdbh_step()
+				continue
 			inst = gdbh_step()
 			inst = parse_instruction(re_dict, inst)
 			
