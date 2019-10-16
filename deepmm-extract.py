@@ -20,7 +20,7 @@ check_for_reccuring_patterns = True
 max_reccuring_patterns = 10
 max_pattern_length = 30
 # Software breakpoints are very slow, optimal = 1000?
-max_breakpoints = 1000
+max_breakpoints = 200
 use_debug_symbols = True
 
 attach_to_process = False
@@ -368,7 +368,7 @@ def main():
 			try:
 				stack_before = parse_stack_state(re_dict)	
 				regs_before = parse_registers_state(re_dict)
-			except:
+			except Exception, e:
 				print(e)
 				print("Skipping.")
 				gdbh_step()
@@ -397,7 +397,6 @@ def main():
 				gdbh_continue()
 				
 	except Exception, e:
-		print("Exception: ")
 		print(e)
 		print("No more programs to parse.")
 		raw_input("Press Enter to exit...")
