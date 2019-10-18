@@ -1,0 +1,23 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1571316281742.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "355393765",
+    "id" : "E448016D",
+    "lastKnownWriteTime" : 1571309913,
+    "last_content_update" : 1571309913,
+    "path" : "~/GitHub/DeepMetaMorph/data_analysis/Script.R",
+    "project_path" : "Script.R",
+    "properties" : {
+    },
+    "read_only" : false,
+    "read_only_alternatives" : [
+    ],
+    "relative_order" : 1,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_source"
+}
