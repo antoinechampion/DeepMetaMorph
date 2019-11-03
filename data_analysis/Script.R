@@ -8,7 +8,7 @@ library(jsonlite)
 library(binaryLogic)
 library(stringr)
 library(tidyr)
-library(onehot)
+library(rlist)
 
 data_path = "../extracted/"
 json <- NULL
@@ -48,7 +48,7 @@ all_instructions <- NULL
     save_restore(option(json), "json")
   }
   # from json :
-  # json[[seq_nb]][[inst_nb]]
+  # json[[file_name]][[seq_nb]][[inst_nb]]
   # [[ [[address, function, offset, hex_code, instruction_name, arguments]], 
   #    registers_before_instruction, registers_after_instruction, 
   #    stack_before_instruction, stack_after_instruction
@@ -56,6 +56,8 @@ all_instructions <- NULL
   json <- sapply(json, function(x) ifelse(x == "NULL", NA, x))
   all_sequences <- unlist(json, recursive = FALSE)
   all_sequences[[1]] <- NULL
+  # Remove empty sequences
+  all_sequences <- list.clean(all_sequences, function(x) length(x) == 0)
   all_instructions <- unlist(all_sequences, recursive = FALSE)
 }
 
@@ -71,25 +73,20 @@ all_instructions <- NULL
     }
   }
   
-  # Convenience function to compute the bit by bit difference 
-  # between two states of the processor
-  state_diff <- function(regs_before, regs_after, stack_before, stack_after) {
-    xb <- c(
-    unlist(regs_after),
-    unlist(stack_after)
+  # Convert a list of 32-bits integers to a vector containing all their bits (little endian)
+  parse_state <- function(regs, stack) {
+    unlisted <- c(
+      unlist(regs),
+      unlist(stack)
     )
-    yb <- c(
-    unlist(regs_before),
-    unlist(stack_before)
-    )
-    m <- mapply(function(k, l) {
-      k <- lapply(k, dectobin)
-      l <- lapply(l, dectobin)
-      diff <- mapply(`-`, k, l)
-      diff
-    }, xb, yb)
+    m <- mapply(dectobin, unlisted)
     
     as.vector(m)
+  }
+  
+  # Compute the difference between two states
+  state_diff <- function(state_before, state_after) {
+    state_after - state_before
   }
   
   # Replacement for standard strtoi/as.numeric cannot handle numbers greater than 2^31
@@ -120,9 +117,30 @@ all_instructions <- NULL
     d$StackAfter <- list(lapply(unlist(inst[5]), strtoi_ex))
     d
   })
+  print(" - Parsing computer states")
+  df$StateBefore <- mapply(parse_state, df$RegistersBefore,
+                         df$StackBefore, SIMPLIFY = FALSE)
+  df$StateAfter <- mapply(parse_state, df$RegistersAfter,
+                           df$StackAfter, SIMPLIFY = FALSE)
   print(" - Computing state diffs")
-  df$StateDiff <- mapply(state_diff, df$RegistersBefore, df$RegistersAfter,
-        df$StackBefore, df$StackAfter, SIMPLIFY = FALSE)
+  df$StateDiff <- mapply(state_diff, df$StateBefore, 
+                         df$StateAfter, SIMPLIFY = FALSE)
+  
+  # Remove empty sequences
+  m <- length(all_sequences)
+  l <- max(sapply(all_sequences, length))
+  n <- (length(df$StackBefore[[1]]) + length(df$RegistersBefore[[1]])) * 32
+  seq_count <- length(all_sequences)
+  seq_lengths <- lapply(all_sequences, length)
+  inst_count <- length(unique(df, by = "Instruction"))
+  inst_args_count <- length(all_instructions)
+  
+  # Drop useless columns
+  df$RegistersBefore <- NULL
+  df$RegistersAfter <- NULL
+  df$StackBefore <- NULL
+  df$StackAfter <- NULL
+  
   print("All done.")
   print(strrep("-", 50))
 }
@@ -168,7 +186,7 @@ data_analysis[["heatmap_instructions"]] <- function(i) {
 data_analysis[["heatmap_global"]] <- function() {
   m <- colMeans(abs(do.call(rbind, df$StateDiff)))
   dim(m) <- c(32, 23)
-  plot_heatmap(t(m), paste("Global processor state heatmap"))
+  plot_heatmap(t(m), paste("Machine state heatmap"))
 }
 
 data_analysis[["instruction"]] <- function(inst) {
@@ -189,35 +207,42 @@ data_analysis[["instruction"]] <- function(inst) {
 
 data_analysis[["statistics"]] <- function(inst) {
   print(strrep("-", 50))
-  print(paste("Nb of sequences:", length(all_sequences)))
-  print(paste("Nb of instructions:", length(unique(df, by = "Instruction"))))
-  print(paste("Nb of (instruction, arguments) couples:", length(all_instructions)))
+  print(paste("Nb of sequences:", seq_count))
+  print(paste("Nb of instructions:", inst_count))
+  print(paste("Nb of (instruction, arguments) couples:", inst_args_count))
 }
 
 # ------ EXPORT ------ 
 # Exports a 3-columns table (input), to input.csv
 # - 1st column is the sequence index
 # - 2nd column is the instruction index within the sequence
-# - 3rd column are the parameters values (state_diff of the instruction)
+# - 3rd column are the parameters values (machine state before the instruction)
 #
 # Exports a 3-column table (output), to output.csv
 # - 1st column is the sequence index
 # - 2nd column is the instruction index within the sequence
 # - 3rd column is the index (one hot) of the right instruction to use. 
-data_analysis[["export"]] <- function(export_stack = TRUE) {
-  m <- length(all_sequences)
-  l <- max(sapply(all_sequences, length))
-  n <- length(df$RegistersBefore[[1]]) * 32
-  if (export_stack) {
-    n <- n + length(df$StackBefore[[1]]) * 32
-  }
-  
+#
+# Export mode 'seq2seq' exports every machine state from the start to the end of the sequence
+# Export mode 'global' exports only the first and the last machine state of the sequence
+# Export mode 'statediff' exports all the state diffs from the start to the end instead of machine states
+data_analysis[["export"]] <- function(export_stack = TRUE, export_mode = "seq2seq") {
   print(strrep("-", 50))
+  print("Freeing memory...")
+  all_instructions <<- NA
+  all_sequences <<- NA
+  json <<- NA
+  gc()
+  
   print("Tidying input...")
-  
-  
   print("- Select")
-  X <- df %>% select(Sequence, StateDiff)
+  if (export_mode == "statediff") {
+    X <- df %>% select(Sequence, StateDiff)
+  } else {
+    X <- df %>% select(Sequence, StateBefore, StateAfter)
+  }
+  df <<- NA
+  gc()
   print("- Group By")
   X <- X %>% group_by(Sequence)
   print("- Mutate")
@@ -225,23 +250,44 @@ data_analysis[["export"]] <- function(export_stack = TRUE) {
   print("- Ungroup")
   X <- X %>% ungroup()
   print("- Pad sequences")
-  X_padded <- data.frame(X)
+  
+  if (export_mode == "seq2seq") {
+    X_padded <- X %>% select(Sequence, InstructionIndex)
+    X_padded$State <- X$StateBefore
+    l <- l + 1
+  } else if (export_mode == "statediff") {
+    X_padded <- data.frame(X)
+  }
+  
   for (i in 1:m) {
-    seq_l <- length(all_sequences[[i]])
+    seq_l <- seq_lengths[[i]]
     if (seq_l < l) {
       to_pad <- l - seq_l
       pad <- data.frame(matrix(NA, nrow=to_pad, ncol=3))
-      names(pad) <- names(X)
+      names(pad) <- names(X_padded)
       pad[["Sequence"]] <- rep(i,to_pad)
-      pad[["StateDiff"]] <- rep(list(rep(-1, n)), to_pad)
+      if (export_mode == "statediff") {
+        pad[["StateDiff"]] <- rep(list(rep(-1, n)), to_pad)
+      }
+      else if (export_mode == "seq2seq") {
+        final_state <- X %>% filter(Sequence == i & InstructionIndex == seq_l)
+        rep(list(rep(-1, n)), to_pad-1)
+        pad[["State"]] <- c(list(final_state$StateAfter[[1]]),rep(list(rep(-1, n)), to_pad-1))
+      }
       pad[["InstructionIndex"]] <- (seq_l+1):l
       X_padded <- rbind(X_padded, pad)
     }
   }
   print("- Arrange")
   X_padded <- X_padded %>% arrange(Sequence, InstructionIndex)
+  return(X_padded)
   print("- Bind")
-  X_mat <- do.call(rbind, X_padded$StateDiff)
+  if (export_mode == "statediff") {
+    X_mat <- do.call(rbind, X_padded$StateDiff)
+  } else {
+    X_mat <- do.call(rbind, X_padded$State)
+  }
+  
   
   print("Exporting input...")
   write.csv(X_mat, file=gzfile("input.csv.gz", compression = 1), row.names = FALSE)
@@ -259,44 +305,38 @@ data_analysis[["export"]] <- function(export_stack = TRUE) {
   Y <- Y %>% ungroup()
   print("- Select")
   Y <- Y %>% select(Sequence, InstructionIndex, InstAndArgs)
-  print("- Pad sequences & add <GO> & <END> tokens")
-  Y_padded <- data.frame(Y)
+  print("- Pad sequences & add <GO> & <NOP> tokens")
+  # Sequence are 2 step longer including an <GO> and an <NOP> token
+  l <- l + 2
+  Y_padded <- rep(NA, seq_count*l)
   for (i in 1:m) {
-    seq_l <- length(all_sequences[[i]])
-    if (seq_l < l) {
-      to_pad <- l - seq_l
-      pad <- data.frame(matrix(NA, nrow=to_pad, ncol=3))
-      names(pad) <- names(Y)
-      pad[["Sequence"]] <- rep(i,to_pad)
-      pad[["InstructionIndex"]] <- (seq_l+1):l
-      pad[["InstAndArgs"]] <- rep("<END>", to_pad)
-      Y_padded <- rbind(Y_padded, pad)
-      
-      # 0 index will be the <GO> token as InstructionIndex starts
-      # from 1
-      go <- data.frame(matrix(NA, nrow=1, ncol=3))
-      names(go) <- names(Y)
-      go[["Sequence"]] <- i
-      go[["InstructionIndex"]] <- 0
-      go[["InstAndArgs"]] <- "<GO>"
-      Y_padded <- rbind(Y_padded, go)
+    if (i %% (m%/%100) == 0) {
+      print(paste0(i %/% (m%/%100), "%"))
     }
+    seq_l <- seq_lengths[[i]]
+    to_pad <- l - seq_l - 1
+    index_start <- ((i-1)*l+1)
+    index_end <- (i*l)
+    Y_padded[index_start] <- "<GO>"
+    if (length(Y[Y$Sequence == i,]$InstAndArgs) == 0) {
+      print(Y[Y$Sequence == i,]$InstAndArgs)
+      print(i)
+      print(seq_l)
+    }
+    Y_padded[(index_start+1):(index_start+seq_l)] <- Y[Y$Sequence == i,]$InstAndArgs
+    Y_padded[(index_start+seq_l+1):index_end] <- rep("<NOP>", to_pad)
   }
-  # Sequence are 1 step longer including the <GO> token
-  l <- l + 1
-  print("- Arrange")
-  Y_padded <- Y_padded %>% arrange(Sequence, InstructionIndex) %>% select(InstAndArgs)
   print("Exporting categorical output...")
   write.csv(Y_padded, file=gzfile("output.categorical.csv.gz", compression = 1), row.names = FALSE)
   
-  print("- One hot encode")
-  encoder <- onehot(Y_padded, stringsAsFactors = TRUE, max_levels = 5000)
-  Y_oh <- predict(encoder, Y_padded)
-  print("Exporting output...")
-  write.csv(Y_oh, file=gzfile("output.csv.gz", compression = 1), row.names = FALSE)
+  # Creating dictionnary
+  dict <- sort(unique(Y_padded))
+  
+  print("Exporting dictionary...")
+  write.csv(dict, file=gzfile("dict.csv.gz", compression = 1), row.names = FALSE)
   
   print("- Exporting dimensions...")
-  n_y <- ncol(Y_oh)
+  n_y <- length(dict)
   dims <- data.frame(m, l, l, n, n_y)
   colnames(dims) <- c("m", "T_x", "T_y", "n_x", "n_y")
   write.csv(dims, file=gzfile("dimensions.csv.gz", compression = 1), row.names = FALSE)

@@ -21,7 +21,7 @@ max_reccuring_patterns = 10
 max_pattern_length = 30
 # Software breakpoints are very slow, optimal = 1000?
 max_breakpoints = 200
-use_debug_symbols = True
+use_debug_symbols = False
 
 attach_to_process = False
 process_id = "4316"

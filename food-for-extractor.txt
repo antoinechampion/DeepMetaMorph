@@ -1,1 +1,1 @@
-C:\MinGW\bin\gdb.exe
+C:\MinGW\bin\xgettext.exe
