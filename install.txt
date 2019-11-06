@@ -1,4 +1,4 @@
 Linux: python 2.7, gdb with python support
 Win: python 2.7 (x86), mingw32 with gdb-python27 package, add mingw32/bin to the path
 
-(optional, for data analysis only: R distribution > 3.2)
+R 64 bits (> 2GB objects)
