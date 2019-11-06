@@ -241,8 +241,6 @@ data_analysis[["export"]] <- function(export_stack = TRUE, export_mode = "seq2se
   } else {
     X <- df %>% select(Sequence, StateBefore, StateAfter)
   }
-  df <<- NA
-  gc()
   print("- Group By")
   X <- X %>% group_by(Sequence)
   print("- Mutate")
