@@ -42,7 +42,7 @@ Then, `cd` into the `gdb` folder and execute the following command:
 
 The `deepmm-extract.py` script will process all the files you provided and store the result of its analysis into the `extracted` folder.
 
-For information, the dataset that was used to train the weights in the `models/` folder was made using the following programs:
+For information, the dataset that was used to train the weights in the `models/` folder was made from analysis of following programs:
 
 - Audacity
 - dvd+rw suite
