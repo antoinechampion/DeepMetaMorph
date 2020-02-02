@@ -1,2 +1,7 @@
-*.csv*
+*.csv
+tf_logs/
+!models/dict.csv
+extracted2/
+*/__pycache__
+*/.vs
 *.RData
