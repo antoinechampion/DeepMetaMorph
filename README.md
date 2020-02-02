@@ -42,7 +42,7 @@ Then, `cd` into the `gdb` folder and execute the following command:
 
 The `deepmm-extract.py` script will process all the files you provided and store the result of its analysis into the `extracted` folder.
 
-For information, the dataset that was used to train the weights in the model/ folder was made using the following programs:
+For information, the dataset that was used to train the weights in the `models/` folder was made using the following programs:
 
 - Audacity
 - dvd+rw suite
@@ -64,8 +64,8 @@ It will produce 3 output files: `dimensions.csv.gz`, `input.csv.gz` and `output.
 
 ### Step 3: Training the network
 
-You need to run `scripts/deepmm-train.py`, which expect to find `dimensions.csv`, `input.csv` and `output.csv` in the `data_analysis` folder. By default, it will load the dataset chunk by chunk, use a batch size of 32 sequences, 10% of the data for validation and do 64 epochs.
+You need to run `training/deepmm-train.py`, which expect to find `dimensions.csv`, `input.csv` and `output.csv` in the `data_analysis` folder. By default, it will load the dataset chunk by chunk, use a batch size of 32 sequences, 10% of the data for validation and do 64 epochs.
 
-It will output 3 model files into the `models` folder once trained.
+It will output 3 model files into `models/` once trained.
 
 
