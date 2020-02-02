@@ -28,7 +28,8 @@ See TBA for more information.
         - keras > 2.0
     - CUDA > 9.1 and cuDNN are recommended for training the recurrent network
 
-## How To
+
+## How To
 
 ### Step 1: Creating a dataset
 
