@@ -43,16 +43,17 @@ Then, `cd` into the `gdb` folder and execute the following command:
 The `deepmm-extract.py` script will process all the files you provided and store the result of its analysis into the `extracted` folder.
 
 For information, the dataset that was used to train the weights in the model/ folder was made using the following programs:
-    - Audacity
-    - dvd+rw suite
-    - dvdauthor
-    - gdb
-    - GIMP
-    - HelloWorld in C
-    - mp3split
-    - mp3tag
-    - OllyDbg
-    - SpaceSniffer
+
+- Audacity
+- dvd+rw suite
+- dvdauthor
+- gdb
+- GIMP
+- HelloWorld in C
+- mp3split
+- mp3tag
+- OllyDbg
+- SpaceSniffer
 
 ### Step 2: Tidy the data
 
