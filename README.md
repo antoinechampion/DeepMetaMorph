@@ -6,7 +6,7 @@ The goal of this project is to provide a way to generate highly metamorphic asse
 
 Results have shown potential but are highly state-of-the-art and shouldn't (can't) be used in production code.
 
-See TBA for more information.
+See [the following post](https://www.antoinechampion.com/Blog?articleId=2) for more information.
 
 ## Dependencies
     - gdb-python27
