@@ -84,7 +84,7 @@ class DeepMMTrainer:
         recall = true_positives / (possible_positives + KB.epsilon())
         predicted_positives = sum(np.round(np.clip(Y_pred, 0, 1)))
         precision = true_positives / (predicted_positives + KB.epsilon())
-        f1 = 2*((precision*recall)/(precision+recall+KB.epsilon()))
+        f1 = 2*((precision * recall) / (precision + recall + KB.epsilon()))
 
         print(precision, recall, f1)
 
