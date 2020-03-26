@@ -1,5 +1,6 @@
 *.csv
 tf_logs/
+tmp/
 !models/dict.csv
 extracted2/
 */__pycache__

@@ -1,7 +1,9 @@
 from __future__ import print_function
 import keras as K
+from keras import backend as KB
 from keras.utils.data_utils import get_file
 from keras.utils import to_categorical
+from sklearn.metrics import classification_report, f1_score, precision_score, recall_score, confusion_matrix
 import numpy as np
 import random
 import sys
@@ -11,10 +13,11 @@ import tensorflow as tf
 from BatchGenerator import BatchGenerator
 
 class DeepMMTrainer:
-    def __init__(self, data_folder_path="data_analysis", batch_size=32, validation_frac=0.1):
+    def __init__(self, data_folder_path="data_analysis", batch_size=32, validation_frac=0.05, test_frac=0.05):
         self.batch_size = batch_size
         self.validation_frac = validation_frac
-        self.data = BatchGenerator(data_folder_path, self.batch_size, self.validation_frac)
+        self.test_frac = test_frac
+        self.data = BatchGenerator(data_folder_path, self.batch_size, self.validation_frac, self.test_frac)
         self.model_compiled = False
 
     def create_model(self, batch_size=32, lstm_hidden_size=256, print_summary=True):
@@ -40,7 +43,7 @@ class DeepMMTrainer:
 
         self._model = K.Model([encoder_inputs, decoder_inputs], decoder_outputs)
 
-        self._model.compile(optimizer="adam", 
+        self._model.compile(optimizer = K.optimizers.Adam(lr=0.001, beta_1=0.9, beta_2=0.999, amsgrad=False),
                                 loss = "categorical_crossentropy",
                             metrics=['accuracy'])   
         if print_summary:
@@ -70,8 +73,36 @@ class DeepMMTrainer:
         print(">>>>> DONE <<<<<")
         self.model_compiled = True
 
-    def train_model(self, epochs=30, log_tensorboard = True, save_models = True):
-        if not self.model_compiled:
+    def print_metrics(self):
+        X_test, Y_test = self.data.get_test_data()
+        Y_pred = self._model.predict(X_test, batch_size=self.data.batch_size)
+
+        Y_pred = np.hstack(np.hstack(Y_pred))
+        Y_test = np.hstack(np.hstack(Y_test))
+        true_positives = sum(np.round(np.clip(Y_test * Y_pred, 0, 1)))
+        possible_positives = sum(np.round(np.clip(Y_test, 0, 1)))
+        recall = true_positives / (possible_positives + KB.epsilon())
+        predicted_positives = sum(np.round(np.clip(Y_pred, 0, 1)))
+        precision = true_positives / (predicted_positives + KB.epsilon())
+        f1 = 2*((precision*recall)/(precision+recall+KB.epsilon()))
+
+        print(precision, recall, f1)
+
+
+    def test_model(self):
+        self.create_model(print_summary=False)
+        self._model.load_weights("models/deepmm-model.h5")
+        self._encoder_model.load_weights("models/deepmm-inference-encoder.h5")
+        self._decoder_model.load_weights("models/deepmm-inference-decoder.h5")
+        self.print_metrics()
+
+    def train_model(self, epochs=30, log_tensorboard = True, save_models = True, load_existing = False):
+        if load_existing:
+            self.create_model(print_summary=False)
+            self._model.load_weights("models/deepmm-model.h5")
+            self._encoder_model.load_weights("models/deepmm-inference-encoder.h5")
+            self._decoder_model.load_weights("models/deepmm-inference-decoder.h5")
+        elif not self.model_compiled:
             self.create_model(print_summary=False)
 
         if (log_tensorboard):
@@ -80,13 +111,14 @@ class DeepMMTrainer:
             callbacks = []
 
         print("Training the model...")
-        steps_train = ((1-self.validation_frac)*self.data.m) // (self.data.batch_size * self.data.T_x) - 1
-        steps_val = (self.validation_frac*self.data.m) // (self.data.batch_size * self.data.T_x) - 1
+        max_iter_per_epoch = self.data.m // self.batch_size
+        steps_train = int(max_iter_per_epoch*(1 - self.validation_frac - self.test_frac))
+        steps_val = int(max_iter_per_epoch*self.validation_frac)
         self._model.fit_generator(self.data.generator_train(),
                 steps_per_epoch = steps_train,
-                epochs=epochs, 
-                validation_data=self.data.generator_validation(),
-                validation_steps=steps_val,
+                epochs = epochs, 
+                validation_data = self.data.generator_validation(),
+                validation_steps = steps_val,
                 callbacks = callbacks)
 
         print("Training complete. Saving...")
@@ -96,5 +128,8 @@ class DeepMMTrainer:
             self._encoder_model.save("models/deepmm-inference-encoder.h5")
             self._decoder_model.save("models/deepmm-inference-decoder.h5")
             pd.DataFrame(self.data._dict).to_csv("models/dict.csv")
+
+        print("Statistics")
+        self.print_metrics()
 
         print(">>>>> DONE <<<<<")

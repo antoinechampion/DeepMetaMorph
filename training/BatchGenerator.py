@@ -3,7 +3,7 @@ import pandas as pd
 import random as rd
 
 class BatchGenerator():
-    def __init__(self, data_folder_path, batch_size, validation_frac=0.1):
+    def __init__(self, data_folder_path, batch_size, validation_frac=0.05, test_frac=0.05):
         self._data_folder_path = data_folder_path
         self._input_data_path = data_folder_path + "/input.csv"
         self._output_data_path = data_folder_path + "/output.csv"
@@ -21,6 +21,7 @@ class BatchGenerator():
 
         self._rd_seed = rd.random()
         self._validation_frac = validation_frac
+        self._test_frac = test_frac
 
     def create_dictionary(self):
         df = pd.read_csv(self._output_data_path)
@@ -48,9 +49,9 @@ class BatchGenerator():
         return [X, X_decoder], Y
 
     def generator_train(self):
-        max_iter = self.m // (self.T_x * self.batch_size)
+        max_iter = self.m // self.batch_size
         start = 0
-        end = int(max_iter*(1-self._validation_frac))
+        end = int(max_iter*(1 - self._validation_frac - self._test_frac))
 
         while (True):
             input_df = pd.read_csv(self._input_data_path, chunksize = int(self.batch_size * self.T_x))
@@ -60,9 +61,9 @@ class BatchGenerator():
                 yield self.prepare_batch(input_df, output_df)
     
     def generator_validation(self):
-        max_iter = self.m // (self.T_x * self.batch_size)
-        start = int(max_iter*(1-self._validation_frac)) + 1
-        end = max_iter
+        max_iter = self.m // self.batch_size
+        start = int(max_iter*(1 - self._validation_frac - self._test_frac)) + 1
+        end = int(max_iter*(1 - self._test_frac))
 
         while (True):
             input_df = pd.read_csv(self._input_data_path, chunksize = int(self.batch_size * self.T_x))
@@ -70,3 +71,25 @@ class BatchGenerator():
 
             for _ in range(start, end):
                 yield self.prepare_batch(input_df, output_df)
+
+    def get_test_data(self):
+        max_iter = self.m // self.batch_size
+        start = int(max_iter*(1 - self._test_frac)) + 1
+        end = max_iter
+
+        X = []
+        X_decoder = []
+        Y = []
+
+        input_df = pd.read_csv(self._input_data_path, chunksize = int(self.batch_size * self.T_x))
+        output_df = pd.read_csv(self._output_data_path, chunksize = int(self.batch_size * self.T_y))
+
+        for _ in range(start, end):
+            [X_i, X_decoder_i], Y_i = self.prepare_batch(input_df, output_df)
+            X.append(X_i)
+            X_decoder.append(X_decoder_i)
+            Y.append(Y_i)
+
+        print(np.vstack(Y_i).shape)
+        
+        return [np.hstack(X), np.hstack(X_decoder)], np.hstack(Y)
