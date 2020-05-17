@@ -3,7 +3,7 @@
 food_for_extractor/*
 tf_logs/
 tmp/
-extracted*/
+extracted*/*
 *.RData
 .Rproj.user
 *.xlsx
