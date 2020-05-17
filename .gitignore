@@ -1,8 +1,10 @@
 *.csv
+*.csv.gz
 tf_logs/
 tmp/
-!models/dict.csv
-extracted2/
+extracted*/
 */__pycache__
 */.vs
 *.RData
+.Rproj.user
+*.xlsx
