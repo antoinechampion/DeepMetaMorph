@@ -8,3 +8,4 @@ extracted*/
 *.RData
 .Rproj.user
 *.xlsx
+.Rhistory
