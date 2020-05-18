@@ -1,8 +1,12 @@
-*.csv
-tf_logs/
-tmp/
-!models/dict.csv
-extracted2/
 */__pycache__
 */.vs
+food_for_extractor/*
+tf_logs/
+tmp/
+extracted*/*
 *.RData
+.Rproj.user
+*.xlsx
+.Rhistory
+*.csv
+*.csv.gz
