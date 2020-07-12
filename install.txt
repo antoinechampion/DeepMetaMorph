@@ -1,4 +1,0 @@
-Linux: python 2.7, gdb with python support
-Win: python 2.7 (x86), mingw32 with gdb-python27 package, add mingw32/bin to the path
-
-R 64 bits (> 2GB objects)
