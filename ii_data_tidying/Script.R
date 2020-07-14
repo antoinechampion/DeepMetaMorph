@@ -377,7 +377,10 @@ data_analysis[["export_csv"]] <- function() {
 #     folder path containing input.csv.gz, output.categorical.gz, 
 #     dimensions.csv.gz and dict.csv.gz
 data_analysis[["to_redis"]] <- function(use_csv = "") {
-  redis_set_name <- "deepmm-available-data"
+  redis_prefix <- "deepmm_"
+  redis_data_name <- paste0(redis_prefix,"available_data")
+  redis_dict_name <- paste0(redis_prefix,"dict")
+  
   if (!redux::redis_available()) {
     print("Redis has not been found on the local machine.") 
     print("Aborting...")  
@@ -388,7 +391,7 @@ data_analysis[["to_redis"]] <- function(use_csv = "") {
     use_csv <- "./"
   }
   
-  print("Formatting data...")
+  print("Preparing data...")
   
   read_file_to_vector <- function(path) {
     f <- gzfile(path, open="rb")
@@ -403,13 +406,32 @@ data_analysis[["to_redis"]] <- function(use_csv = "") {
   dict <- read_file_to_vector(file.path(use_csv, "dict.csv.gz"))
   dimensions <- read.csv(gzfile(file.path(use_csv, "dimensions.csv.gz")))
   
-  XY <- paste(X, Y, sep="-")
   
   print("Exporting to redis...")
   r <- redux::hiredis()
+  
+  # Dataset
+  # Fetch using:
+  #   SPOP deepmm_available_data [batch size]
+  #   SADD deepmm_used_data [...]
+  XY <- paste(X, Y, sep="-")
   for (xy in XY) {
-    r$SADD(redis_set_name, xy)
+    r$SADD(redis_data_name, xy)
   }
+  
+  # Dictionary
+  # Fetch using ZRANGEBYSCORE deepmm_dict -inf +inf
+  for (i in 1:length(dict)) {
+    r$ZADD(redis_dict_name, i, dict[[i]])
+  }
+  
+  # Dimensions
+  # Fetch using GET deepmm_[...]
+  r$SET(paste0(redis_prefix,"m"), dimensions$m)
+  r$SET(paste0(redis_prefix,"T_x"), dimensions$T_x)
+  r$SET(paste0(redis_prefix,"T_y"), dimensions$T_y)
+  r$SET(paste0(redis_prefix,"n_x"), dimensions$n_x)
+  r$SET(paste0(redis_prefix,"n_y"), dimensions$n_y)
   print(">>>> All done. <<<<")
 }
 
@@ -421,6 +443,7 @@ data_analysis[["help"]] <- function() {
   print("  * `data_analysis[['heatmap_global']]()` to view the heatmap of the processor state for all the instructions")
   print("  * `data_analysis[['statistics']]()` to display various useful statistics")
   print("  * `data_analysis[['export_csv']]()` to export the data for the model")
+  print("  * `data_analysis[['to_redis']](csv_path=NULL)` to export the data a local redis database")
   print("  * `data_analysis[['help']]()` to display this message again. ")
 }
 data_analysis[["help"]]()
