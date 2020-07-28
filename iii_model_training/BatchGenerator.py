@@ -1,95 +1,122 @@
 import numpy as np
-import pandas as pd
 import random as rd
+import redis
 
 class BatchGenerator():
-    def __init__(self, data_folder_path, batch_size, validation_frac=0.05, test_frac=0.05):
-        self._data_folder_path = data_folder_path
-        self._input_data_path = data_folder_path + "/input.csv"
-        self._output_data_path = data_folder_path + "/output.csv"
-        self._dimensions_data_path = data_folder_path + "/dimensions.csv"
+    def __init__(self, batch_size, validation_frac=0.05, test_frac=0.05):
+        self.redis_prefix = "deepmm_"
         self.batch_size = int(batch_size)
+        self.r = redis.Redis(decode_responses=True, 
+            host='localhost', 
+            port=6379, db=0)
 
-        dimensions = pd.read_csv(self._dimensions_data_path).astype("int32")
-        self.m = dimensions["m"][0]
-        self.T_x = dimensions["T_x"][0]
-        self.T_y = dimensions["T_y"][0]
-        self.n_x = dimensions["n_x"][0]
-        self.n_y = dimensions["n_y"][0]
+        self.redis_clean()
+        self.redis_load_dimensions()
+        self.redis_create_dictionary()
+        self.redis_split_train_val_test(validation_frac, test_frac)
 
-        self.create_dictionary()
+    def redis_load_dimensions(self):
+        self.m = int(self.r.scard(self.redis_prefix + "available_data"))
+        self.T_x = int(self.r.get(self.redis_prefix + "T_x"))
+        self.T_y = int(self.r.get(self.redis_prefix + "T_y"))
+        self.n_x = int(self.r.get(self.redis_prefix + "n_x"))
+        self.n_y = int(self.r.get(self.redis_prefix + "n_y"))
 
-        self._rd_seed = rd.random()
-        self._validation_frac = validation_frac
-        self._test_frac = test_frac
+    def encode_inst(self, inst):
+        return self.dict[inst]
 
-    def create_dictionary(self):
-        df = pd.read_csv(self._output_data_path)
-        vals = sorted(df["InstAndArgs"].unique())
+    def decode_inst(self, one_hot):
+        try:
+            return self.reverse_dict[np.argmax(one_hot)]
+        except KeyError as e:
+            raise KeyError("Key error: " + str(one_hot)) from e
+
+    def redis_create_dictionary(self):
+        vals = self.r.zrangebyscore(
+            self.redis_prefix + "dict",
+            "-inf", "+inf")
         idm = np.identity(len(vals))
-        self._dict = {}
+        self.dict = {}
+        self.reverse_dict = {}
         for i in range(len(vals)):
-            self._dict[vals[i]] = idm[i]
+            self.dict[vals[i]] = idm[i]
+            self.reverse_dict[i] = vals[i]
         self.n_y = len(vals)
 
-    def prepare_batch(self, df_input, df_output):
-        X = next(df_input).astype("float32").to_numpy()
-        X = np.reshape(X, (self.batch_size, self.T_x, self.n_x))
-        Y_cat = next(df_output).to_numpy()
-        Y = np.zeros((self.batch_size, self.T_y, self.n_y))
-        for i in range(self.batch_size):
-            for j in range(self.T_y):
-                Y[i,j,:] = self._dict[Y_cat[i*j, 0]]
+    def redis_split_train_val_test(self, validation_frac, test_frac):
+        train_frac = 1 - validation_frac - test_frac
+        validation = self.r.spop(self.redis_prefix + "available_data", 
+            int(self.m * validation_frac))
+        self.r.sadd(self.redis_prefix + "available_validation_data", 
+            *validation)
+        test = self.r.spop(self.redis_prefix + "available_data", 
+            int(self.m * test_frac))
+        self.r.sadd(self.redis_prefix + "available_test_data", 
+            *test)
+        self.r.rename(self.redis_prefix + "available_data", 
+            self.redis_prefix + "available_train_data")
 
-        X_decoder = np.zeros((self.batch_size, self.T_y, self.n_y))
+        self.m_train = int(self.r.scard(self.redis_prefix + "available_train_data"))
+        self.m_validation = int(self.r.scard(self.redis_prefix + "available_validation_data"))
+        self.m_test = int(self.r.scard(self.redis_prefix + "available_test_data"))
+
+    def redis_reset_dataset(self, dataset):
+        used_key = self.redis_prefix + "used_" + dataset + "_data"
+        available_key = self.redis_prefix + "available_" + dataset + "_data"
+        self.r.sunionstore(available_key, available_key, used_key)
+        self.r.delete(used_key)
+
+    def redis_clean(self):
+        keys = [self.redis_prefix + "available_data", 
+            self.redis_prefix + "available_train_data",
+            self.redis_prefix + "used_train_data",
+            self.redis_prefix + "available_validation_data",
+            self.redis_prefix + "used_validation_data",
+            self.redis_prefix + "available_test_data",
+            self.redis_prefix + "used_test_data"]
+        self.r.sunionstore(self.redis_prefix + "available_data", *keys)
+        for k in keys[1:]:
+            self.r.delete(k)
+
+    def prepare_batch(self, dataset):
+        if (dataset not in ["train", "validation", "test"]):
+            raise ValueError("`dataset` should be train, validation or test")
+        else:
+            redis_key_available = self.redis_prefix + "available_" + dataset + "_data"
+            redis_key_used = self.redis_prefix + "used_" + dataset + "_data"
+        vals = self.r.spop(redis_key_available, self.batch_size)
+
+        XY_str = [[vv.split(";") for vv in v.split("-")] for v in vals]
+
+        X = np.zeros((self.batch_size, self.T_x, self.n_x), dtype=np.float32)
+        X_decoder = np.zeros((self.batch_size, self.T_y, self.n_y), dtype=np.float32)
+        Y = np.zeros((self.batch_size, self.T_y, self.n_y), dtype=np.float32)
+        for seq_idx in range(len(XY_str)):
+            for x_idx in range(len(XY_str[seq_idx][0])):
+                X[seq_idx,x_idx] = np.array(list(XY_str[seq_idx][0][x_idx]), dtype=np.float32)
+            for y_idx in range(len(XY_str[seq_idx][1])):
+                X_decoder[seq_idx,y_idx] = self.encode_inst(XY_str[seq_idx][1][y_idx])
+                
+        self.r.sadd(redis_key_used, *vals)
+        Y = np.roll(X_decoder, -1, 1)
+        one_hot_end = self.encode_inst("<END>")
         for i in range(self.batch_size):
-            X_decoder[i,0,0] = 1
-            for j in range(1, self.T_y):
-                X_decoder[i,j,:] = Y[i,j-1,:]
+            Y[i,-1,:] = one_hot_end
         return [X, X_decoder], Y
 
     def generator_train(self):
-        max_iter = self.m // self.batch_size
-        start = 0
-        end = int(max_iter*(1 - self._validation_frac - self._test_frac))
-
         while (True):
-            input_df = pd.read_csv(self._input_data_path, chunksize = int(self.batch_size * self.T_x))
-            output_df = pd.read_csv(self._output_data_path, chunksize = int(self.batch_size * self.T_y))
+            for i in range(self.m_train // self.batch_size):
+                yield self.prepare_batch("train")               
+            self.redis_reset_dataset("train")
 
-            for _ in range(start, end):
-                yield self.prepare_batch(input_df, output_df)
-    
     def generator_validation(self):
-        max_iter = self.m // self.batch_size
-        start = int(max_iter*(1 - self._validation_frac - self._test_frac)) + 1
-        end = int(max_iter*(1 - self._test_frac))
-
         while (True):
-            input_df = pd.read_csv(self._input_data_path, chunksize = int(self.batch_size * self.T_x))
-            output_df = pd.read_csv(self._output_data_path, chunksize = int(self.batch_size * self.T_y))
+            for i in range(self.m_validation // self.batch_size):
+                yield self.prepare_batch("validation")                
+            self.redis_reset_dataset("validation")   
 
-            for _ in range(start, end):
-                yield self.prepare_batch(input_df, output_df)
-
-    def get_test_data(self):
-        max_iter = self.m // self.batch_size
-        start = int(max_iter*(1 - self._test_frac)) + 1
-        end = max_iter
-
-        X = []
-        X_decoder = []
-        Y = []
-
-        input_df = pd.read_csv(self._input_data_path, chunksize = int(self.batch_size * self.T_x))
-        output_df = pd.read_csv(self._output_data_path, chunksize = int(self.batch_size * self.T_y))
-
-        for _ in range(start, end):
-            [X_i, X_decoder_i], Y_i = self.prepare_batch(input_df, output_df)
-            X.append(X_i)
-            X_decoder.append(X_decoder_i)
-            Y.append(Y_i)
-
-        print(np.vstack(Y_i).shape)
-        
-        return [np.hstack(X), np.hstack(X_decoder)], np.hstack(Y)
+    def generator_test(self):
+        for i in range(self.m_test // self.batch_size):
+            yield self.prepare_batch("test")    
+        self.redis_reset_dataset("test")
